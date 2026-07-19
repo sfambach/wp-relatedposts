@@ -34,6 +34,28 @@
         "debug_modus": {
             "type": "boolean",
             "default": false
+        },
+		"datum_anzeigen": {
+            "type": "boolean",
+            "default": false
+        },
+        "datum_typ": {
+            "type": "string",
+            "default": "date"
+        },
+        "punkte_anzeigen": {
+            "type": "boolean",
+            "default": true
+        },
+		"sortierung_nach": {
+            "type": "string",
+            "default": "dynamisch_datum",
+            "enum": ["dynamisch_datum", "title", "rand"]
+        },
+        "sortierung_ordnung": {
+            "type": "string",
+            "default": "DESC",
+            "enum": ["DESC", "ASC"]
         }
     },
     "supports": {

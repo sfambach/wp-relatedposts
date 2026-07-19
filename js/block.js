@@ -26,18 +26,11 @@
                 };
             }, [] );
 
-            // 2. Prüfen, ob Änderungen ungespeichert sind
-            var isPostDirty = useSelect( function( select ) {
-                var editor = select( 'core/editor' );
-                return editor ? editor.isEditedPostDirty() : false;
-            }, [] );
-
-            // 3. ALLE verfügbaren Kategorien für das Auswahlfeld laden
+            // 2. ALLE verfügbaren Kategorien laden
             var allWpCategories = useSelect( function( select ) {
                 return select( 'core' ).getEntityRecords( 'taxonomy', 'category', { per_page: -1 } ) || [];
             }, [] );
 
-            // Hilfs-Mapping zur fehlerfreien Zuordnung aufbauen
             var catIdToName = {};
             var catNameToId = {};
             var allCategoryNames = [];
@@ -50,12 +43,11 @@
                 } );
             }
 
-            // Aktive Kategorie-IDs basierend auf dem Modus auswerten
             var aktuelleKategorieIds = attributes.kategorie_modus === 'manuell' 
                 ? ( attributes.eigene_kategorien_ids || [] )
                 : postData.categories;
 
-            // 4. REST-API Abfrage für die Live-Vorschau
+            // 3. REST-API Abfrage für die Live-Vorschau
             var relatedPostsRecords = useSelect( function( select ) {
                 if ( ! aktuelleKategorieIds || aktuelleKategorieIds.length === 0 ) {
                     return [];
@@ -70,16 +62,13 @@
                 return select( 'core' ).getEntityRecords( 'postType', 'post', queryArgs );
             }, [ aktuelleKategorieIds, postData.id, attributes.anzahl_beitraege, attributes.kategorie_modus ] );
 
-            // Liste der echten Namen für die Anzeige generieren
-            var aktiveKategorieNamenList = [];
+            var categoryNamesString = [];
             if ( Array.isArray( allWpCategories ) ) {
-                aktiveKategorieNamenList = allWpCategories.filter( function( cat ) {
+                categoryNamesString = allWpCategories.filter( function( cat ) {
                     return aktuelleKategorieIds.indexOf( cat.id ) !== -1;
-                } ).map( function( cat ) { return cat.name; } );
+                } ).map( function( cat ) { return cat.name; } ).join( ', ' );
             }
-            var categoryNamesString = aktiveKategorieNamenList.join( ', ' );
 
-            // Tokens für das FormTokenField vorbereiten
             var selectedTokens = [];
             if ( attributes.eigene_kategorien_ids ) {
                 selectedTokens = attributes.eigene_kategorien_ids.map( function( id ) {
@@ -87,7 +76,7 @@
                 } ).filter( Boolean );
             }
 
-            // Sidebar-Steuerung (Inspector) aufbauen
+            // Sidebar-Steuerung (Inspector)
             var sidebarElements = [
                 el( ToggleControl, {
                     label: 'Verwandte Beiträge aktivieren',
@@ -160,6 +149,37 @@
                     );
                 }
 
+                // --- NEUE EINSTELLUNGEN ---
+                sidebarElements.push(
+                    el( ToggleControl, {
+                        label: 'Datum neben dem Titel anzeigen',
+                        checked: attributes.datum_anzeigen || false,
+                        onChange: function ( value ) { setAttributes( { datum_anzeigen: value } ); }
+                    } )
+                );
+
+                if ( attributes.datum_anzeigen ) {
+                    sidebarElements.push(
+                        el( SelectControl, {
+                            label: 'Datums-Typ wählen',
+                            value: attributes.datum_typ || 'date',
+                            options: [
+                                { label: 'Erstelldatum', value: 'date' },
+                                { label: 'Letzte Änderung', value: 'modified' }
+                            ],
+                            onChange: function ( value ) { setAttributes( { datum_typ: value } ); }
+                        } )
+                    );
+                }
+
+                sidebarElements.push(
+                    el( ToggleControl, {
+                        label: 'Aufzählungspunkte (Listen-Stil) anzeigen',
+                        checked: attributes.punkte_anzeigen !== false, // default true
+                        onChange: function ( value ) { setAttributes( { punkte_anzeigen: value } ); }
+                    } )
+                );
+
                 sidebarElements.push(
                     el( ToggleControl, {
                         label: 'Debugging im Frontend anzeigen',
@@ -168,7 +188,7 @@
                     } )
                 );
             }
-            // Design der Info- und Vorschau-Box definieren
+            // Design der Info- und Vorschau-Box
             var boxStyle = {
                 padding: '20px',
                 borderRadius: '4px',
@@ -195,7 +215,6 @@
                 boxStyle.background = '#ebf8ff';
                 boxStyle.color = '#2b6cb0';
 
-                // --- TEIL A: Statistik (Sonderzeichen-bereinigt) ---
                 content.push( el( 'div', { key: 'info-1', style: { marginBottom: '8px' } }, el( 'strong', null, '📊 Live-Analyse für diesen Beitrag:' ) ) );
                 content.push( el( 'div', { key: 'info-2' }, '\u2022 Modus: ', el( 'strong', null, attributes.kategorie_modus === 'manuell' ? 'Manuell definiert' : 'Automatisch (Beitrag)' ) ) );
                 content.push( el( 'div', { key: 'info-3' }, '\u2022 Herangezogene Kategorien (' + aktuelleKategorieIds.length + '): ', el( 'span', { style: { fontStyle: 'italic' } }, categoryNamesString || 'Lade Kategorien...' ) ) );
@@ -203,9 +222,6 @@
                 var anzahlGefunden = relatedPostsRecords ? relatedPostsRecords.length : 0;
                 content.push( el( 'div', { key: 'info-4', style: { marginBottom: '12px' } }, '\u2022 Verfügbare verwandte Beiträge in der DB: ', el( 'strong', null, relatedPostsRecords === null ? 'Lade...' : anzahlGefunden ) ) );
 
-                content.push( el( 'div', { key: 'info-4', style: { marginBottom: '12px' } }, '• Verfügbare verwandte Beiträge in der DB: ', el( 'strong', null, relatedPostsRecords === null ? 'Lade...' : anzahlGefunden ) ) );
-
-                // --- TEIL B: Echte Frontend-Vorschau ---
                 var frontendPreviewElements = [];
                 frontendPreviewElements.push(
                     el( attributes.ueberschrift_typ || 'h2', { 
@@ -215,20 +231,49 @@
                 );
 
                 if ( relatedPostsRecords === null ) {
-                    // API-Abfrage läuft noch asynchron im Hintergrund
                     frontendPreviewElements.push( el( 'p', { key: 'preview-loading', style: { fontStyle: 'italic', color: '#718096' } }, 'Beiträge werden geladen...' ) );
                 } else if ( relatedPostsRecords.length === 0 ) {
                     frontendPreviewElements.push( el( 'p', { key: 'preview-empty', style: { fontStyle: 'italic', color: '#718096' } }, 'Keine passenden Beiträge im System gefunden.' ) );
                 } else {
                     var listItems = relatedPostsRecords.map( function( post ) {
                         var titleText = ( post.title && post.title.rendered ) ? post.title.rendered : 'Unbenannter Beitrag';
-                        return el( 'li', { key: 'post-' + post.id }, 
-                            el( 'span', { style: { color: '#0051a8', textDecoration: 'underline' } }, titleText )
+                        
+                        // Datum formatieren, falls eingeschaltet
+                        var dateString = '';
+						if ( attributes.datum_anzeigen ) {
+                            var rawDate = attributes.datum_typ === 'modified' ? post.modified : post.date;
+                            if ( rawDate ) {
+                                var d = new Date( rawDate );
+                                // Erzwingt zweistellige Ausgabe für Tag und Monat
+                                var tag   = ( '0' + d.getDate() ).slice( -2 );
+                                var monat = ( '0' + ( d.getMonth() + 1 ) ).slice( -2 );
+                                var jahr  = d.getFullYear();
+                                
+                                dateString = tag + '.' + monat + '.' + jahr + ' - ';
+                            }
+                        }
+
+                        // Listenpunkt-Stil basierend auf dem Umschalter anpassen
+                        var liStyle = attributes.punkte_anzeigen === false 
+                            ? { listStyleType: 'none', marginBottom: '6px' } 
+                            : { marginBottom: '6px' };
+
+                        return el( 'li', { key: 'post-' + post.id, style: liStyle }, 
+                            el( 'span', { style: { color: '#4a5568', marginRight: '5px', fontWeight: '5px' } }, dateString ),
+                            el( 'span', { 
+                                style: { color: '#0051a8', textDecoration: 'underline' },
+                                dangerouslySetInnerHTML: { __html: titleText }
+                            } )
                         );
                     } );
-                    frontendPreviewElements.push( el( 'ul', { key: 'preview-list', style: { margin: '0', paddingLeft: '20px' } }, listItems ) );
-                }
 
+                    // Wenn Punkte deaktiviert sind, rücken wir das "ul" linksbündig ein
+                    var ulStyle = attributes.punkte_anzeigen === false 
+                        ? { margin: '0', paddingLeft: '0' } 
+                        : { margin: '0', paddingLeft: '20px' };
+
+                    frontendPreviewElements.push( el( 'ul', { key: 'preview-list', style: ulStyle }, listItems ) );
+                }
 
                 content.push( el( 'div', { 
                     key: 'frontend-preview-container', 
@@ -237,14 +282,6 @@
                     el( 'div', { style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#718096', marginBottom: '10px', fontWeight: 'bold' } }, '👁️ Live Frontend-Vorschau:' ),
                     frontendPreviewElements
                 ) );
-
-                // Speicher-Warnung
-                if ( isPostDirty && attributes.kategorie_modus === 'automatisch' ) {
-                    content.push( el( 'div', { 
-                        key: 'info-dirty-warning', 
-                        style: { marginTop: '10px', padding: '8px 12px', background: '#fff5f5', border: '1px solid #fed7d7', borderRadius: '4px', color: '#e53e3e', fontWeight: 'bold', fontSize: '12px' } 
-                    }, 'ℹ️ Hinweis: Beitragskategorien wurden geändert. Bitte speichere den Beitrag!' ) );
-                }
             }
 
             var blockProps = useBlockProps( {
