@@ -11,13 +11,29 @@
             "type": "boolean",
             "default": true
         },
+        "ueberschrift_text": {
+            "type": "string",
+            "default": "Verwandte Beiträge"
+        },
+        "ueberschrift_typ": {
+            "type": "string",
+            "default": "h2"
+        },
         "anzahl_beitraege": {
             "type": "integer",
             "default": 5
         },
-        "ueberschrift_typ": {
+        "kategorie_modus": {
             "type": "string",
-            "default": "h3"
+            "default": "automatisch"
+        },
+        "eigene_kategorien_ids": {
+            "type": "array",
+            "default": []
+        },
+        "debug_modus": {
+            "type": "boolean",
+            "default": false
         }
     },
     "supports": {

@@ -9,6 +9,7 @@
  * Primary Branch:    main
  */
 
+
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
@@ -37,13 +38,18 @@ function fambach_render_related_posts_block( $attributes ) {
         return '';
     }
 
-    $anzahl = isset( $attributes['anzahl_beitraege'] ) ? (int) $attributes['anzahl_beitraege'] : 5;
-    $heading_tag = isset( $attributes['ueberschrift_typ'] ) ? $attributes['ueberschrift_typ'] : 'h3';
+    // WICHTIG: Fallbacks exakt auf deine neuen Wünsche ausrichten
+    $ueberschrift_text = ! empty( $attributes['ueberschrift_text'] ) ? esc_html( $attributes['ueberschrift_text'] ) : 'Verwandte Beiträge';
+    $heading_tag       = ! empty( $attributes['ueberschrift_typ'] ) ? $attributes['ueberschrift_typ'] : 'h2'; // Default ist jetzt h2
+    $anzahl            = isset( $attributes['anzahl_beitraege'] ) ? (int) $attributes['anzahl_beitraege'] : 5;
+    $kategorie_modus   = isset( $attributes['kategorie_modus'] ) ? $attributes['kategorie_modus'] : 'automatisch';
+    $debug_modus       = isset( $attributes['debug_modus'] ) ? (bool) $attributes['debug_modus'] : false;
 
-    if ( ! in_array( $heading_tag, array( 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div' ), true ) ) {
-        $heading_tag = 'h3';
+    // Sicherheits-Prüfung für die Whitelist (jetzt inklusive h1)
+    if ( ! in_array( $heading_tag, array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div' ), true ) ) {
+        $heading_tag = 'h2';
     }
-    
+     
     $current_post_id = get_the_ID();
     if ( ! $current_post_id ) {
         return '';
@@ -68,7 +74,7 @@ function fambach_render_related_posts_block( $attributes ) {
 
     if ( $related_query->have_posts() ) {
         $output .= '<div class="wp-block-fambach-related-posts">';
-        $output .= '<' . $heading_tag . ' class="related-posts-title">Das könnte dich auch interessieren:</' . $heading_tag . '>';
+		$output .= '<' . $heading_tag . ' class="related-posts-title">' . $ueberschrift_text . '</' . $heading_tag . '>';
         $output .= '<ul>';
         
         while ( $related_query->have_posts() ) {

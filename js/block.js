@@ -5,6 +5,8 @@
     var PanelBody = components.PanelBody;
     var ToggleControl = components.ToggleControl;
     var SelectControl = components.SelectControl;
+    var TextControl = components.TextControl;
+    var FormTokenField = components.FormTokenField;
     var useSelect = data.useSelect;
 
     blocks.registerBlockType( 'fambach/related-posts', {
@@ -15,7 +17,7 @@
             var attributes = props.attributes;
             var setAttributes = props.setAttributes;
 
-            // 1. Hole den aktuellen Post-Typ, seine ID und die editierten Kategorien
+            // 1. Sicheres Laden der Daten des aktuellen Beitrags
             var postData = useSelect( function( select ) {
                 var editor = select( 'core/editor' );
                 return {
@@ -24,30 +26,68 @@
                 };
             }, [] );
 
-            // 2. Prüfen, ob der Beitrag ungespeicherte Änderungen hat
+            // 2. Prüfen, ob Änderungen ungespeichert sind
             var isPostDirty = useSelect( function( select ) {
                 var editor = select( 'core/editor' );
                 return editor ? editor.isEditedPostDirty() : false;
             }, [] );
 
-            // 3. Abfrage der echten Kategorienamen
-            var fullCategories = useSelect( function( select ) {
-                if ( postData.categories.length === 0 ) return [];
-                return select( 'core' ).getEntityRecords( 'taxonomy', 'category', { include: postData.categories } ) || [];
-            }, [ postData.categories ] );
+            // 3. ALLE verfügbaren Kategorien für das Auswahlfeld laden
+            var allWpCategories = useSelect( function( select ) {
+                return select( 'core' ).getEntityRecords( 'taxonomy', 'category', { per_page: -1 } ) || [];
+            }, [] );
 
-            // 4. Abfrage der Beitrags-Anzahl
-            var relatedPostsCount = useSelect( function( select ) {
-                if ( postData.categories.length === 0 ) return 0;
+            // Hilfs-Mapping zur fehlerfreien Zuordnung aufbauen
+            var catIdToName = {};
+            var catNameToId = {};
+            var allCategoryNames = [];
+            
+            if ( Array.isArray( allWpCategories ) ) {
+                allCategoryNames = allWpCategories.map( function( cat ) {
+                    catIdToName[cat.id] = cat.name;
+                    catNameToId[cat.name] = cat.id;
+                    return cat.name;
+                } );
+            }
+
+            // Aktive Kategorie-IDs basierend auf dem Modus auswerten
+            var aktuelleKategorieIds = attributes.kategorie_modus === 'manuell' 
+                ? ( attributes.eigene_kategorien_ids || [] )
+                : postData.categories;
+
+            // 4. REST-API Abfrage für die Live-Vorschau
+            var relatedPostsRecords = useSelect( function( select ) {
+                if ( ! aktuelleKategorieIds || aktuelleKategorieIds.length === 0 ) {
+                    return [];
+                }
                 var queryArgs = {
-                    categories: postData.categories,
-                    exclude: postData.id ? [ postData.id ] : [],
-                    per_page: 100
+                    categories: aktuelleKategorieIds,
+                    per_page: attributes.anzahl_beitraege || 5
                 };
-                var posts = select( 'core' ).getEntityRecords( 'postType', 'post', queryArgs );
-                return posts ? posts.length : 0;
-            }, [ postData.categories, postData.id ] );
+                if ( attributes.kategorie_modus === 'automatisch' && postData.id ) {
+                    queryArgs.exclude = [ postData.id ];
+                }
+                return select( 'core' ).getEntityRecords( 'postType', 'post', queryArgs );
+            }, [ aktuelleKategorieIds, postData.id, attributes.anzahl_beitraege, attributes.kategorie_modus ] );
 
+            // Liste der echten Namen für die Anzeige generieren
+            var aktiveKategorieNamenList = [];
+            if ( Array.isArray( allWpCategories ) ) {
+                aktiveKategorieNamenList = allWpCategories.filter( function( cat ) {
+                    return aktuelleKategorieIds.indexOf( cat.id ) !== -1;
+                } ).map( function( cat ) { return cat.name; } );
+            }
+            var categoryNamesString = aktiveKategorieNamenList.join( ', ' );
+
+            // Tokens für das FormTokenField vorbereiten
+            var selectedTokens = [];
+            if ( attributes.eigene_kategorien_ids ) {
+                selectedTokens = attributes.eigene_kategorien_ids.map( function( id ) {
+                    return catIdToName[id] || '';
+                } ).filter( Boolean );
+            }
+
+            // Sidebar-Steuerung (Inspector) aufbauen
             var sidebarElements = [
                 el( ToggleControl, {
                     label: 'Verwandte Beiträge aktivieren',
@@ -58,25 +98,17 @@
 
             if ( attributes.beitraege_aktivieren ) {
                 sidebarElements.push(
-                    el( SelectControl, {
-                        label: 'Anzahl der Beiträge',
-                        value: attributes.anzahl_beitraege,
-                        options: [
-                            { label: '3 Beiträge', value: 3 }, { label: '5 Beiträge', value: 5 },
-                            { label: '10 Beiträge', value: 10 }, { label: '15 Beiträge', value: 15 },
-                            { label: '20 Beiträge', value: 20 }, { label: '25 Beiträge', value: 25 },
-                            { label: '30 Beiträge', value: 30 }, { label: '35 Beiträge', value: 35 },
-                            { label: '40 Beiträge', value: 40 }, { label: '45 Beiträge', value: 45 },
-                            { label: '50 Beiträge', value: 50 }
-                        ],
-                        onChange: function ( value ) { setAttributes( { anzahl_beitraege: parseInt( value, 10 ) } ); }
+                    el( TextControl, {
+                        label: 'Name der Überschrift',
+                        value: attributes.ueberschrift_text || 'Verwandte Beiträge',
+                        onChange: function ( value ) { setAttributes( { ueberschrift_text: value } ); }
                     } )
                 );
 
                 sidebarElements.push(
                     el( SelectControl, {
-                        label: 'Art der Überschrift',
-                        value: attributes.ueberschrift_typ,
+                        label: 'Typ der Überschrift',
+                        value: attributes.ueberschrift_typ || 'h2',
                         options: [
                             { label: 'Überschrift 2 (H2)', value: 'h2' }, { label: 'Überschrift 3 (H3)', value: 'h3' },
                             { label: 'Überschrift 4 (H4)', value: 'h4' }, { label: 'Überschrift 5 (H5)', value: 'h5' },
@@ -86,11 +118,57 @@
                         onChange: function ( value ) { setAttributes( { ueberschrift_typ: value } ); }
                     } )
                 );
+
+                sidebarElements.push(
+                    el( SelectControl, {
+                        label: 'Anzahl der Beiträge',
+                        value: attributes.anzahl_beitraege || 5,
+                        options: [
+                            { label: '5 Beiträge', value: 5 }, { label: '10 Beiträge', value: 10 },
+                            { label: '15 Beiträge', value: 15 }, { label: '20 Beiträge', value: 20 },
+                            { label: '25 Beiträge', value: 25 }, { label: '30 Beiträge', value: 30 },
+                            { label: '35 Beiträge', value: 35 }, { label: '40 Beiträge', value: 40 },
+                            { label: '45 Beiträge', value: 45 }, { label: '50 Beiträge', value: 50 }
+                        ],
+                        onChange: function ( value ) { setAttributes( { anzahl_beitraege: parseInt( value, 10 ) } ); }
+                    } )
+                );
+
+                sidebarElements.push(
+                    el( SelectControl, {
+                        label: 'Kategorien heranziehen aus',
+                        value: attributes.kategorie_modus || 'automatisch',
+                        options: [
+                            { label: 'Kategorien des aktuellen Beitrags', value: 'automatisch' },
+                            { label: 'Eigene Kategorien festlegen', value: 'manuell' }
+                        ],
+                        onChange: function ( value ) { setAttributes( { kategorie_modus: value } ); }
+                    } )
+                );
+
+                if ( attributes.kategorie_modus === 'manuell' ) {
+                    sidebarElements.push(
+                        el( FormTokenField, {
+                            label: 'Eigene Kategorien auswählen',
+                            value: selectedTokens,
+                            suggestions: allCategoryNames,
+                            onChange: function ( tokens ) {
+                                var newIds = tokens.map( function( name ) { return catNameToId[name]; } ).filter( Boolean );
+                                setAttributes( { eigene_kategorien_ids: newIds } );
+                            }
+                        } )
+                    );
+                }
+
+                sidebarElements.push(
+                    el( ToggleControl, {
+                        label: 'Debugging im Frontend anzeigen',
+                        checked: attributes.debug_modus || false,
+                        onChange: function ( value ) { setAttributes( { debug_modus: value } ); }
+                    } )
+                );
             }
-
-            var categoryNames = fullCategories.map( function( cat ) { return cat.name; } ).join( ', ' );
-
-            // Bereinigte Styles ohne feste Breite, damit das Theme-Layout greift
+            // Design der Info- und Vorschau-Box definieren
             var boxStyle = {
                 padding: '20px',
                 borderRadius: '4px',
@@ -107,48 +185,65 @@
                 boxStyle.background = '#fde8e8';
                 boxStyle.color = '#c53030';
                 content.push( el( 'strong', { key: 'status' }, '🛑 Verwandte Beiträge sind deaktiviert.' ) );
-            } else if ( postData.categories.length === 0 ) {
+            } else if ( aktuelleKategorieIds.length === 0 ) {
                 boxStyle.border = '2px dashed #dd6b20';
                 boxStyle.background = '#fffaf0';
                 boxStyle.color = '#dd6b20';
-                content.push( el( 'strong', { key: 'status' }, '⚠️ Warnung: ' ), 'Dieser Beitrag hat noch keine Kategorien ausgewählt.' );
+                content.push( el( 'strong', { key: 'status' }, '⚠️ Warnung: ' ), 'Es wurden keine Kategorien gefunden oder ausgewählt.' );
             } else {
                 boxStyle.border = '2px dashed #3182ce';
                 boxStyle.background = '#ebf8ff';
                 boxStyle.color = '#2b6cb0';
 
-                content.push( el( 'div', { key: 'info-1', style: { marginBottom: '8px' } }, 
-                    el( 'strong', null, '📊 Live-Analyse für diesen Beitrag:' )
-                ) );
-                content.push( el( 'div', { key: 'info-2' }, 
-                    '• Gefundene Kategorien: ', el( 'strong', null, postData.categories.length )
-                ) );
-                if ( categoryNames ) {
-                    content.push( el( 'div', { key: 'info-3' }, 
-                        '• Kategorienamen: ', el( 'span', { style: { fontStyle: 'italic' } }, categoryNames )
-                    ) );
+                // --- TEIL A: Statistik (Sonderzeichen-bereinigt) ---
+                content.push( el( 'div', { key: 'info-1', style: { marginBottom: '8px' } }, el( 'strong', null, '📊 Live-Analyse für diesen Beitrag:' ) ) );
+                content.push( el( 'div', { key: 'info-2' }, '\u2022 Modus: ', el( 'strong', null, attributes.kategorie_modus === 'manuell' ? 'Manuell definiert' : 'Automatisch (Beitrag)' ) ) );
+                content.push( el( 'div', { key: 'info-3' }, '\u2022 Herangezogene Kategorien (' + aktuelleKategorieIds.length + '): ', el( 'span', { style: { fontStyle: 'italic' } }, categoryNamesString || 'Lade Kategorien...' ) ) );
+                
+                var anzahlGefunden = relatedPostsRecords ? relatedPostsRecords.length : 0;
+                content.push( el( 'div', { key: 'info-4', style: { marginBottom: '12px' } }, '\u2022 Verfügbare verwandte Beiträge in der DB: ', el( 'strong', null, relatedPostsRecords === null ? 'Lade...' : anzahlGefunden ) ) );
+
+                content.push( el( 'div', { key: 'info-4', style: { marginBottom: '12px' } }, '• Verfügbare verwandte Beiträge in der DB: ', el( 'strong', null, relatedPostsRecords === null ? 'Lade...' : anzahlGefunden ) ) );
+
+                // --- TEIL B: Echte Frontend-Vorschau ---
+                var frontendPreviewElements = [];
+                frontendPreviewElements.push(
+                    el( attributes.ueberschrift_typ || 'h2', { 
+                        key: 'preview-heading',
+                        style: { margin: '0 0 10px 0', color: '#000', fontWeight: 'bold' }
+                    }, attributes.ueberschrift_text || 'Verwandte Beiträge' )
+                );
+
+                if ( relatedPostsRecords === null ) {
+                    // API-Abfrage läuft noch asynchron im Hintergrund
+                    frontendPreviewElements.push( el( 'p', { key: 'preview-loading', style: { fontStyle: 'italic', color: '#718096' } }, 'Beiträge werden geladen...' ) );
+                } else if ( relatedPostsRecords.length === 0 ) {
+                    frontendPreviewElements.push( el( 'p', { key: 'preview-empty', style: { fontStyle: 'italic', color: '#718096' } }, 'Keine passenden Beiträge im System gefunden.' ) );
+                } else {
+                    var listItems = relatedPostsRecords.map( function( post ) {
+                        var titleText = ( post.title && post.title.rendered ) ? post.title.rendered : 'Unbenannter Beitrag';
+                        return el( 'li', { key: 'post-' + post.id }, 
+                            el( 'span', { style: { color: '#0051a8', textDecoration: 'underline' } }, titleText )
+                        );
+                    } );
+                    frontendPreviewElements.push( el( 'ul', { key: 'preview-list', style: { margin: '0', paddingLeft: '20px' } }, listItems ) );
                 }
-                content.push( el( 'div', { key: 'info-4', style: { marginBottom: '8px' } }, 
-                    '• Verfügbare verwandte Beiträge in der DB: ', el( 'strong', null, relatedPostsCount )
-                ) );
-                content.push( el( 'div', { key: 'info-5', style: { borderTop: '1px solid #bee3f8', paddingTop: '8px', fontSize: '12px' } }, 
-                    '✓ Im Frontend werden max. ' + attributes.anzahl_beitraege + ' Einträge mit einer <' + attributes.ueberschrift_typ + '>-Überschrift angezeigt.'
+
+
+                content.push( el( 'div', { 
+                    key: 'frontend-preview-container', 
+                    style: { marginTop: '15px', padding: '15px', background: '#ffffff', border: '1px solid #bee3f8', borderRadius: '4px', color: '#333' } 
+                }, 
+                    el( 'div', { style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#718096', marginBottom: '10px', fontWeight: 'bold' } }, '👁️ Live Frontend-Vorschau:' ),
+                    frontendPreviewElements
                 ) );
 
-                if ( isPostDirty ) {
+                // Speicher-Warnung
+                if ( isPostDirty && attributes.kategorie_modus === 'automatisch' ) {
                     content.push( el( 'div', { 
                         key: 'info-dirty-warning', 
-                        style: { 
-                            marginTop: '10px', 
-                            padding: '8px 12px', 
-                            background: '#fff5f5', 
-                            border: '1px solid #fed7d7', 
-                            borderRadius: '4px', 
-                            color: '#e53e3e', 
-                            fontWeight: 'bold',
-                            fontSize: '12px'
-                        } 
-                    }, 'ℹ️ Hinweis: Kategorien wurden geändert. Bitte speichere den Beitrag, damit die Live-Daten im Frontend aktiv werden!' ) );
+                        style: { marginTop: '10px', padding: '8px 12px', background: '#fff5f5', border: '1px solid #fed7d7', borderRadius: '4px', color: '#e53e3e', fontWeight: 'bold', fontSize: '12px' } 
+                    }, 'ℹ️ Hinweis: Beitragskategorien wurden geändert. Bitte speichere den Beitrag!' ) );
                 }
             }
 
