@@ -1,0 +1,8 @@
+{
+    "apiVersion": 3,
+    "name": "WP-RelatedPosts,
+    "title": "Related Posts searched by Category",
+    
+    "editorScript": "file:./js/block.js", 
+    "viewScript": "file:./js/frontend.js"
+}
