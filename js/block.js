@@ -10,7 +10,6 @@
             var attributes = props.attributes;
             var setAttributes = props.setAttributes;
 
-            // Haupt-Schalter für die Sidebar definieren
             var sidebarElements = [
                 el( ToggleControl, {
                     label: 'Verwandte Beiträge aktivieren',
@@ -21,9 +20,7 @@
                 } )
             ];
 
-            // Wenn aktiv, zusätzliche Einstellungen einblenden
             if ( attributes.beitraege_aktivieren ) {
-                // 1. Auswahl für die Beitragsanzahl (erweitert bis 50)
                 sidebarElements.push(
                     el( SelectControl, {
                         label: 'Anzahl der Beiträge',
@@ -47,7 +44,6 @@
                     } )
                 );
 
-                // 2. Erweiterte Auswahl für die Art der Überschrift
                 sidebarElements.push(
                     el( SelectControl, {
                         label: 'Art der Überschrift',
@@ -68,7 +64,6 @@
                 );
             }
 
-            // Backend-Vorschau rendern
             return [
                 el( InspectorControls, { key: 'setting' },
                     el( PanelBody, { title: 'Block-Einstellungen', initialOpen: true },
